@@ -6,7 +6,8 @@ services:
   # Computation
   jupyter:
     container_name: "lnk2stack_jupyter"
-    restart: "always"
+    hostname: "lnk2stack_jupyter"
+    # restart: "always"
     build: services/jupyter
     env_file:
       - ./config/jupyter.env
@@ -23,20 +24,24 @@ services:
   # Visualization
   superset:
     container_name: "lnk2stack_superset"
-    restart: "always"
-    image: tylerfowler/superset
+    hostname: "lnk2stack_superset"
+    # restart: "always"
+    build: services/superset
     depends_on:
-        - postgres
+      postgres:
+        condition: service_healthy
     env_file:
         - ./config/superset_container.env
         - ./config/superset_database.env
     ports:
-      - 8088:8088
+      - 8088:8080
+    command: bash -c "/entrypoint.sh"
 
   # Misc Storage
   postgres:
     container_name: "lnk2stack_postgres"
-    restart: "always"
+    hostname: "lnk2stack_postgres"
+    # restart: "always"
     image: postgres
     env_file:
       - ./config/postgres.env
@@ -48,29 +53,37 @@ services:
       - ./services/postgres/:/docker-entrypoint-initdb.d/
     ports:
       - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Scheduling
   airflow:
     container_name: "lnk2stack_airflow"
-    restart: "always"
-    image: apache/airflow
+    hostname: "lnk2stack_airflow"
+    # restart: "always"
+    image: apache/airflow:latest
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     env_file:
       - ./config/airflow_container.env
       - ./config/minio.env
       - ./config/shared_database.env
     volumes:
       - ./shared/requirements.txt:/requirements.txt
-      - ./shared/dags/:/usr/local/airflow/dags
+      - ./shared/dags/:/opt/airflow/dags
     ports:
       - 8080:8080
-    command: webserver
+    command: bash -c "airflow initdb && airflow webserver -D && airflow scheduler -D"
 
   # Model Storage
   minio:
     container_name: "lnk2stack_minio"
-    restart: "always"
+    hostname: "lnk2stack_minio"
+    # restart: "always"
     image: minio/minio
     env_file:
         - ./config/minio.env
@@ -83,7 +96,8 @@ services:
   # API
   apistar:
     container_name: "lnk2stack_apistar"
-    restart: "always"
+    hostname: "lnk2stack_apistar"
+    # restart: "always"
     build: services/apistar
     env_file:
       - ./config/minio.env
@@ -96,7 +110,8 @@ services:
   # Admin Overview
   portainer:
     container_name: "lnk2stack_portainer"
-    restart: "always"
+    hostname: "lnk2stack_portainer"
+    # restart: "always"
     image: portainer/portainer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
