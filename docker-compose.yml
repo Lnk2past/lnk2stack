@@ -1,14 +1,44 @@
 version: "3"
 
-# All available services
 services:
+
+  airflow:
+    container_name: "lnk2stack_airflow"
+    hostname: "lnk2stack_airflow"
+    restart: "always"
+    image: apache/airflow:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./config/airflow_container.env
+      - ./config/minio.env
+      - ./config/shared_database.env
+    volumes:
+      - ./shared/requirements.txt:/requirements.txt
+      - ./shared/dags/:/opt/airflow/dags
+    ports:
+      - 8080:8080
+    command: bash -c "airflow initdb && airflow webserver -D && airflow scheduler -D"
+
+  # API
+  fastapi:
+    container_name: "lnk2stack_fastapi"
+    hostname: "lnk2stack_fastapi"
+    restart: "always"
+    image: lnk2past/lnk2stack-fastapi
+    volumes:
+      - ./services/fastapi/api:/usr/src/app
+    ports:
+      - 8000:8000
+    command: uvicorn --host 0.0.0.0 main:app --reload
 
   # Computation
   jupyter:
     container_name: "lnk2stack_jupyter"
     hostname: "lnk2stack_jupyter"
-    # restart: "always"
-    build: services/jupyter
+    restart: "always"
+    image: lnk2past/lnk2stack-jupyter
     env_file:
       - ./config/jupyter.env
       - ./config/minio.env
@@ -21,27 +51,25 @@ services:
       - 8888:8888
     entrypoint: sh -c 'start-notebook.sh --NotebookApp.token=$$JUPYTER_PASSWORD'
 
-  # Visualization
-  superset:
-    container_name: "lnk2stack_superset"
-    hostname: "lnk2stack_superset"
-    # restart: "always"
-    build: services/superset
-    depends_on:
-      postgres:
-        condition: service_healthy
+  # Model Storage
+  minio:
+    container_name: "lnk2stack_minio"
+    hostname: "lnk2stack_minio"
+    restart: "always"
+    image: minio/minio
     env_file:
-        - ./config/superset_container.env
-        - ./config/superset_database.env
+        - ./config/minio.env
+    volumes:
+        - minio_volume:/data
     ports:
-      - 8088:8080
-    command: bash -c "/entrypoint.sh"
+        - 9000:9000
+    command: server /data
 
   # Misc Storage
   postgres:
     container_name: "lnk2stack_postgres"
     hostname: "lnk2stack_postgres"
-    # restart: "always"
+    restart: "always"
     image: postgres
     env_file:
       - ./config/postgres.env
@@ -59,59 +87,29 @@ services:
       timeout: 5s
       retries: 5
 
-  # Scheduling
-  airflow:
-    container_name: "lnk2stack_airflow"
-    hostname: "lnk2stack_airflow"
-    # restart: "always"
-    image: apache/airflow:latest
+  # Visualization
+  superset:
+    container_name: "lnk2stack_superset"
+    hostname: "lnk2stack_superset"
+    restart: "always"
+    image: lnk2past/lnk2stack-superset
     depends_on:
       postgres:
         condition: service_healthy
     env_file:
-      - ./config/airflow_container.env
-      - ./config/minio.env
-      - ./config/shared_database.env
+      - ./config/superset_container.env
+      - ./config/superset_database.env
     volumes:
-      - ./shared/requirements.txt:/requirements.txt
-      - ./shared/dags/:/opt/airflow/dags
+      - ./services/superset/:/superset-config/
     ports:
-      - 8080:8080
-    command: bash -c "airflow initdb && airflow webserver -D && airflow scheduler -D"
-
-  # Model Storage
-  minio:
-    container_name: "lnk2stack_minio"
-    hostname: "lnk2stack_minio"
-    # restart: "always"
-    image: minio/minio
-    env_file:
-        - ./config/minio.env
-    volumes:
-        - minio_volume:/data
-    ports:
-        - 9000:9000
-    command: server /data
-
-  # API
-  apistar:
-    container_name: "lnk2stack_apistar"
-    hostname: "lnk2stack_apistar"
-    # restart: "always"
-    build: services/apistar
-    env_file:
-      - ./config/minio.env
-    volumes:
-      - ./services/apistar/api:/usr/src/app
-    ports:
-      - 8000:8000
-    command: gunicorn app:app -b 0.0.0.0:8000
+      - 8088:8080
+    command: bash -c "/entrypoint.sh"
 
   # Admin Overview
   portainer:
     container_name: "lnk2stack_portainer"
     hostname: "lnk2stack_portainer"
-    # restart: "always"
+    restart: "always"
     image: portainer/portainer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
